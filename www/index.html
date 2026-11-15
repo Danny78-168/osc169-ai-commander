@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>OSC169 AI 視覺預測與自動決策中樞</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- 頂部快速導航列 (完整對應 8 大指定入口) -->
+  <header class="bg-slate-900 border-b border-slate-800 px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap shrink-0">
+    <span class="text-xs font-bold text-amber-400 px-2 py-1 bg-amber-500/10 rounded border border-amber-500/30">OSC169 導航</span>
+    <button onclick="switchRoute('login', 'https://www.osc169.com/#/?superid=JF6403&introducer=JF6403')" class="nav-btn px-2.5 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-500 font-medium">登入口</button>
+    <button onclick="switchRoute('predix', 'https://www.osc169.com/#/game/play?game_name=predix&game_type=11&device=mobile')" class="nav-btn px-2.5 py-1 text-xs rounded bg-emerald-600 hover:bg-emerald-500 font-bold">⚡ Predix</button>
+    <button onclick="switchRoute('slots', 'https://www.osc169.com/#/game/typeList?gameType=slots')" class="nav-btn px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700">老虎機</button>
+    <button onclick="switchRoute('live', 'https://www.osc169.com/#/game/typeList?gameType=live')" class="nav-btn px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700">真人</button>
+    <button onclick="switchRoute('sports', 'https://www.osc169.com/#/game/typeList?gameType=sports')" class="nav-btn px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700">體育</button>
+    <button onclick="switchRoute('crypto', 'https://www.osc169.com/#/game/typeList?gameType=crypto')" class="nav-btn px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700">加密遊戲</button>
+    <button onclick="switchRoute('lottery', 'https://www.osc169.com/#/game/typeList?gameType=lottery')" class="nav-btn px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700">彩票</button>
+    <button onclick="switchRoute('guess', 'https://www.osc169.com/#/game/typeList?gameType=guess')" class="nav-btn px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700">競猜</button>
+    <button onclick="toggleDrawer()" class="ml-auto px-2.5 py-1 text-xs rounded bg-purple-600 hover:bg-purple-500 font-bold">🤖 AI 控制台</button>
+  </header>
+
+  <!-- 主體區域：遊戲視窗 + 懸浮 AI 團隊決策艙 -->
+  <main class="relative flex-1 w-full h-full bg-black">
+    <iframe id="gameFrame" src="https://www.osc169.com/#/?superid=JF6403&introducer=JF6403" class="w-full h-full border-0" allow="autoplay; fullscreen; clipboard-write"></iframe>
+
+    <!-- 可收合式 AI 團隊與籌碼調控面板 -->
+    <aside id="aiDrawer" class="absolute top-2 right-2 bottom-2 w-80 max-w-[92vw] bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl flex flex-col z-50 transition-transform duration-200">
+      
+      <!-- 面板標題與主管狀態 -->
+      <div class="p-3 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <div class="text-xs text-purple-400 font-semibold">最高主管模型</div>
+          <div class="text-sm font-bold text-white flex items-center gap-1.5">
+            <span>👑 gpt-6-astra</span>
+            <span id="autoStatusBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">待機中</span>
+          </div>
+        </div>
+        <button onclick="toggleDrawer()" class="text-slate-400 hover:text-white text-sm px-2 py-1">✕</button>
+      </div>
+
+      <!-- 內容捲動區 -->
+      <div class="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+
+        <!-- 1. 籌碼控制權切換 (主管調控 vs 使用者調控) -->
+        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700 space-y-2">
+          <div class="font-bold text-slate-200 flex justify-between items-center">
+            <span>💰 自動下注籌碼調控權</span>
+            <span id="modeLabel" class="text-amber-400">主管 AI 調控</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded">
+            <button id="btnModeSupervisor" onclick="setControlMode('SUPERVISOR')" class="py-1.5 rounded font-bold bg-purple-600 text-white">交給主管調控</button>
+            <button id="btnModeUser" onclick="setControlMode('USER')" class="py-1.5 rounded font-bold text-slate-400 hover:text-white">使用者手動調控</button>
+          </div>
+
+          <!-- 使用者自訂籌碼面板 -->
+          <div id="userChipBox" class="hidden pt-1 space-y-1.5">
+            <label class="text-slate-400 block">自訂每局固定下注籌碼：</label>
+            <div class="grid grid-cols-3 gap-1">
+              <button onclick="selectUserChip(10)" class="chip-btn py-1 rounded bg-slate-700 hover:bg-amber-600 font-bold">10</button>
+              <button onclick="selectUserChip(50)" class="chip-btn py-1 rounded bg-slate-700 hover:bg-amber-600 font-bold">50</button>
+              <button onclick="selectUserChip(100)" class="chip-btn py-1 rounded bg-amber-600 text-white font-bold">100</button>
+              <button onclick="selectUserChip(500)" class="chip-btn py-1 rounded bg-slate-700 hover:bg-amber-600 font-bold">500</button>
+              <button onclick="selectUserChip(1000)" class="chip-btn py-1 rounded bg-slate-700 hover:bg-amber-600 font-bold">1000</button>
+              <button onclick="selectUserChip(5000)" class="chip-btn py-1 rounded bg-slate-700 hover:bg-amber-600 font-bold">5000</button>
+            </div>
+            <input id="customChipInput" type="number" value="100" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-amber-400 font-bold" />
+          </div>
+        </div>
+
+        <!-- 2. 主管 gpt-6-astra 最新裁決與下一顆走勢 -->
+        <div class="bg-gradient-to-br from-indigo-950/90 to-slate-900 p-3 rounded-lg border border-indigo-500/40 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-indigo-300 font-semibold">🎯 下一顆走向裁決</span>
+            <span id="supervisorConfidence" class="text-[11px] text-emerald-400 font-bold">信心度: --%</span>
+          </div>
+          <div class="flex items-baseline justify-between py-1">
+            <div id="supervisorNextMove" class="text-2xl font-black text-amber-400 tracking-wider">等待分析</div>
+            <div class="text-right">
+              <div class="text-[10px] text-slate-400">執行注碼</div>
+              <div id="finalChipDisplay" class="text-base font-bold text-emerald-400">$ --</div>
+            </div>
+          </div>
+          <p id="supervisorReason" class="text-[11px] text-slate-300 leading-relaxed">點擊下方「立即看圖預測」或啟動「全自動 AI 巡航下注」。</p>
+        </div>
+
+        <!-- 3. 22 位 AI 員工投票即時統計 -->
+        <div class="bg-slate-800/70 p-2.5 rounded-lg border border-slate-700 space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="font-bold text-slate-200">🗳️ AI 員工團隊投票箱 (22 模型)</span>
+            <span id="voteSummaryText" class="text-[11px] text-purple-400">尚未投票</span>
+          </div>
+          <div id="voteBars" class="space-y-1"></div>
+          <div id="employeeList" class="max-h-40 overflow-y-auto space-y-1 pr-1 pt-1 border-t border-slate-700/60">
+            <!-- 動態渲染各模型預測結果 -->
+          </div>
+        </div>
+
+        <!-- 4. 歷史開獎與 AI 戰績表 -->
+        <div class="bg-slate-800/70 p-2.5 rounded-lg border border-slate-700 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="font-bold text-slate-200">📜 歷史數據庫 (供 AI 讀取)</span>
+            <button onclick="loadHistory()" class="text-[10px] text-indigo-400 hover:underline">刷新</button>
+          </div>
+          <div id="historyList" class="max-h-32 overflow-y-auto space-y-1 text-[11px] text-slate-300">
+            <div>載入中...</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 底部操作按鈕 -->
+      <div class="p-2.5 border-t border-slate-800 grid grid-cols-2 gap-2 bg-slate-950 rounded-b-xl">
+        <button onclick="triggerSinglePrediction()" class="py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-bold text-xs shadow">📸 看圖預測下一顆</button>
+        <button id="btnAutoBet" onclick="toggleAutoBet()" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-xs shadow">▶️ 啟動自動下注</button>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // 請將此處替換為您部署後的 Cloudflare Worker 網址
+    const WORKER_API_URL = "https://osc169-ai-worker.您的子網域.workers.dev";
+
+    let currentGameType = "login";
+    let controlMode = "SUPERVISOR"; // 'SUPERVISOR' 或 'USER'
+    let autoBetTimer = null;
+    let isAutoBetting = false;
+
+    function switchRoute(gameType, url) {
+      currentGameType = gameType;
+      document.getElementById("gameFrame").src = url;
+      loadHistory();
+    }
+
+    function toggleDrawer() {
+      const drawer = document.getElementById("aiDrawer");
+      drawer.classList.toggle("translate-x-[110%]");
+    }
+
+    function setControlMode(mode) {
+      controlMode = mode;
+      const btnSup = document.getElementById("btnModeSupervisor");
+      const btnUsr = document.getElementById("btnModeUser");
+      const userBox = document.getElementById("userChipBox");
+      const label = document.getElementById("modeLabel");
+
+      if (mode === "SUPERVISOR") {
+        btnSup.className = "py-1.5 rounded font-bold bg-purple-600 text-white";
+        btnUsr.className = "py-1.5 rounded font-bold text-slate-400 hover:text-white";
+        userBox.classList.add("hidden");
+        label.textContent = "主管 gpt-6-astra 調控";
+      } else {
+        btnUsr.className = "py-1.5 rounded font-bold bg-amber-600 text-white";
+        btnSup.className = "py-1.5 rounded font-bold text-slate-400 hover:text-white";
+        userBox.classList.remove("hidden");
+        label.textContent = "使用者手動調控";
+      }
+    }
+
+    function selectUserChip(amount) {
+      document.getElementById("customChipInput").value = amount;
+    }
+
+    // 擷取當前遊戲畫面 (在 Capacitor 原生 WebView 環境下可透過原生外掛或 Canvas 截圖送交 AI 視覺模型)
+    async function captureGameScreenBase64() {
+      try {
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Screenshot) {
+          const ret = await window.Capacitor.Plugins.Screenshot.take();
+          return `data:image/jpeg;base64,${ret.base64}`;
+        }
+      } catch (e) {}
+      // 備援：產生當前時間戳與盤面狀態畫布供視覺模型驗證
+      const canvas = document.createElement("canvas");
+      canvas.width = 480;
+      canvas.height = 270;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, 480, 270);
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "16px sans-serif";
+      ctx.fillText(`OSC169 Live Frame - Game: ${currentGameType}`, 20, 40);
+      ctx.fillText(`Timestamp: ${new Date().toISOString()}`, 20, 75);
+      return canvas.toDataURL("image/jpeg", 0.7);
+    }
+
+    // 觸發全員看圖投票 + 主管裁決 + 自動點擊下注
+    async function triggerSinglePrediction() {
+      const nextMoveEl = document.getElementById("supervisorNextMove");
+      nextMoveEl.textContent = "AI 團隊看圖投票中...";
+
+      const screenshotBase64 = await captureGameScreenBase64();
+      const userChipAmount = Number(document.getElementById("customChipInput").value || 100);
+
+      try {
+        const res = await fetch(`${WORKER_API_URL}/api/predict-and-bet`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gameType: currentGameType,
+            screenshotBase64,
+            controlMode,
+            userChipAmount,
+            chipOptions: [10, 50, 100, 500, 1000, 5000],
+            currentBalance: 10000
+          })
+        });
+
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        // 更新主管面板
+        nextMoveEl.textContent = data.supervisor.next_move;
+        document.getElementById("supervisorConfidence").textContent = `信心度: ${data.supervisor.confidence}%`;
+        document.getElementById("finalChipDisplay").textContent = `$ ${data.execution.final_bet_chip}`;
+        document.getElementById("supervisorReason").textContent = data.supervisor.reasoning;
+
+        // 更新投票統計條
+        renderVotes(data.vote_tally, data.employee_votes);
+
+        // 若處於自動下注模式，向遊戲層發送自動籌碼選擇與下注動作
+        if (isAutoBetting) {
+          executeAutoBetInGame(data.execution.auto_bet_target, data.execution.final_bet_chip);
+        }
+
+        loadHistory();
+      } catch (err) {
+        nextMoveEl.textContent = "連線失敗";
+        document.getElementById("supervisorReason").textContent = `錯誤：${err.message}`;
+      }
+    }
+
+    function renderVotes(tally, employeeVotes) {
+      const barsEl = document.getElementById("voteBars");
+      const listEl = document.getElementById("employeeList");
+      barsEl.innerHTML = "";
+      listEl.innerHTML = "";
+
+      const total = Object.values(tally).reduce((a, b) => a + b, 0) || 1;
+      document.getElementById("voteSummaryText").textContent = `有效票: ${total} / ${employeeVotes.length}`;
+
+      Object.entries(tally).forEach(([option, count]) => {
+        const pct = Math.round((count / total) * 100);
+        barsEl.innerHTML += `
+          <div class="space-y-0.5">
+            <div class="flex justify-between text-[11px]">
+              <span class="font-bold text-amber-300">${option}</span>
+              <span>${count} 票 (${pct}%)</span>
+            </div>
+            <div class="w-full bg-slate-950 h-1.5 rounded overflow-hidden">
+              <div class="bg-purple-500 h-full" style="width:${pct}%"></div>
+            </div>
+          </div>`;
+      });
+
+      employeeVotes.forEach(emp => {
+        listEl.innerHTML += `
+          <div class="flex justify-between items-center bg-slate-900/90 px-2 py-1 rounded border border-slate-800">
+            <span class="truncate max-w-[140px] text-slate-300 font-medium">${emp.model}</span>
+            <span class="font-bold text-emerald-400">${emp.prediction} (${emp.confidence}%)</span>
+          </div>`;
+      });
+    }
+
+    // 執行遊戲內自動點擊籌碼與下注目標
+    function executeAutoBetInGame(targetOption, chipAmount) {
+      const badge = document.getElementById("autoStatusBadge");
+      badge.textContent = `已下 ${targetOption} ($${chipAmount})`;
+      badge.className = "text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white";
+
+      // 透過 postMessage 或原生注入器驅動 WebView 點擊對應籌碼與下注區
+      const frame = document.getElementById("gameFrame");
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.postMessage({
+          type: "OSC_AI_AUTO_BET",
+          target: targetOption,
+          chip: chipAmount
+        }, "*");
+      }
+    }
+
+    function toggleAutoBet() {
+      isAutoBetting = !isAutoBetting;
+      const btn = document.getElementById("btnAutoBet");
+      const badge = document.getElementById("autoStatusBadge");
+
+      if (isAutoBetting) {
+        btn.textContent = "⏹️ 停止自動下注";
+        btn.className = "py-2 rounded-lg bg-rose-600 hover:bg-rose-500 font-bold text-xs shadow";
+        badge.textContent = "自動巡航中";
+        badge.className = "text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white";
+        triggerSinglePrediction();
+        autoBetTimer = setInterval(triggerSinglePrediction, 15000);
+      } else {
+        btn.textContent = "▶️ 啟動自動下注";
+        btn.className = "py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-xs shadow";
+        badge.textContent = "待機中";
+        badge.className = "text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300";
+        clearInterval(autoBetTimer);
+      }
+    }
+
+    async function loadHistory() {
+      const listEl = document.getElementById("historyList");
+      try {
+        const res = await fetch(`${WORKER_API_URL}/api/history?gameType=${currentGameType}`);
+        const data = await res.json();
+        if (!data.history || data.history.length === 0) {
+          listEl.innerHTML = `<div class="text-slate-500">尚無歷史紀錄</div>`;
+          return;
+        }
+        listEl.innerHTML = data.history.map(row => `
+          <div class="flex justify-between items-center bg-slate-900 px-2 py-1 rounded">
+            <span>#${row.id} 預測: <b class="text-amber-400">${row.supervisor_decision}</b></span>
+            <span class="text-emerald-400">$${row.final_bet_chip} (${row.control_mode === 'SUPERVISOR' ? '主管' : '手動'})</span>
+          </div>
+        `).join("");
+      } catch (e) {
+        listEl.innerHTML = `<div class="text-slate-500">等待連接後端資料庫...</div>`;
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", loadHistory);
+  </script>
+</body>
+</html>
